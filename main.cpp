@@ -83,12 +83,12 @@ int main(int argc, const char* argv[]) {
 	// incremental compare pointers
 	int8_t* mcmp=matrix;
 	int8_t* fcmp=finish;
-	if(argc>3){
-		printmatrix(matrix);
-		std::cout << (mtail-matrix)/16 << std::endl;
-	}
-	long steps=0;
-	long zeroes=0;
+	// if(argc>3){
+	// 	printmatrix(matrix);
+	// 	std::cout << (mtail-matrix)/16 << std::endl;
+	// }
+	int_fast64_t steps=0;
+	int_fast64_t zeroes=0;
 	while(1){
 		// advance compare pointers
 		while(*mcmp==*fcmp){
@@ -116,10 +116,10 @@ int main(int argc, const char* argv[]) {
 			if(!badroot){
 				zeroes++;
 				mtail-=16;
-				if(argc>3){
-					printmatrix(matrix);
-					std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
-				}
+				// if(argc>3){
+				// 	printmatrix(matrix);
+				// 	std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
+				// }
 				continue;
 			}
 			int copyoffset=badroot*16;
@@ -148,15 +148,15 @@ int main(int argc, const char* argv[]) {
 			}
 			// if no copies are made, clear the cut node
 			if(i>0){
-				for(int j=0;j<=i;j++){
+				for(int j=0;j<16;j++){
 					mtail[j]=0;
 				}
 			}
 			mtail-=16;
-			if(argc>3){
-				printmatrix(matrix);
-				std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
-			}
+			// if(argc>3){
+			// 	printmatrix(matrix);
+			// 	std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
+			// }
 		}
 	}
 	bigbreak:
