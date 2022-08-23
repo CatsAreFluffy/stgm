@@ -114,14 +114,12 @@ int main(int argc, const char* argv[]) {
 		while(mupd>mcmp){
 			mupd=mtail;
 			steps++;
-			// if(steps>2){
+			// if(steps>1){
 			// 	matrix[45678]+=3;
 			// }
 			int8_t badroot=0;
-			// used later
-			int i=0;
 			// fails for 16 row columns
-			for(;mtail[i];i++){
+			for(int i=0;mtail[i];i++){
 				badroot=mtail[i];
 			}
 			if(!badroot){
@@ -137,7 +135,7 @@ int main(int argc, const char* argv[]) {
 			// the copy to the cut node needs to be handled separately,
 			// since the pre-LNZ part isn't copied from the bad root and
 			// the other part is never ascended
-			// equivalent scalar code:
+			// equivalent scalar code: (uses i from the badroot loop)
 			// for(i--;i<16;i++){
 			// 	mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
 			// }
@@ -166,29 +164,33 @@ int main(int argc, const char* argv[]) {
 			// aYZ0
 			__m128i newcol=_mm_add_epi8(cutnodekeep,badrootfinal);
 			*(__m128i*)mtail=newcol;
-			i=16;
-			int descendlim=0;
-			while(mtail-copyoffset<=matrix+maxlen){
-				// the copy to the cut node has already been handled
-				// so skip that here
-				for(;i<-copyoffset;i++){
-					int8_t entry=mtail[i+copyoffset];
-					if(entry<descendlim-i/16){
-						entry+=badroot;
-					}
-					mtail[i]=entry;
-				}
-				mtail-=copyoffset;
-				descendlim+=badroot;
-				i=0;
+			// copy the rest of the columns
+			__m128i* mtailv=((__m128i*)mtail);
+			// last column to copy to
+			__m128i* mfinal=mtailv-1;
+			while(mfinal-badroot<(__m128i*)(matrix+maxlen)){
+				mfinal-=badroot;
 			}
 			// if no copies are made, clear the cut node
-			if(i>0){
+			if(mfinal==mtailv-1){
 				for(int j=0;j<16;j++){
 					mtail[j]=0;
 				}
+			}else{
+				__m128i* badrootp=mtailv+badroot;
+				// copy each column of the bad part (but use cut node instead
+				// of bad root since the bad root was copied earlier)
+				for(int copycoli=-badroot;copycoli>0;copycoli--){
+					__m128i copycol=badrootp[copycoli];
+					__m128i descendm=_mm_cmplt_epi8(copycol,_mm_set1_epi8(-copycoli));
+					__m128i descender=_mm_and_si128(descendm,_mm_set1_epi8(badroot));
+					for(__m128i* target=mtailv+copycoli;target<=mfinal;target-=badroot){
+						copycol=_mm_add_epi8(copycol,descender);
+						*target=copycol;
+					}
+				}
 			}
-			mtail-=16;
+			mtail=(int8_t*)mfinal;
 			// if(argc>3){
 			// 	printmatrix(matrix);
 			// 	std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
