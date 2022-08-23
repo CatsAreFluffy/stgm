@@ -141,16 +141,29 @@ int main(int argc, const char* argv[]) {
 			// for(i--;i<16;i++){
 			// 	mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
 			// }
+			// example: *mtail=ab00, *mtail+copyoffset=xyz0,
+			// badroot=V=X-x=Y-y..., -1=F
+			// 0000
 			__m128i zero=_mm_setzero_si128();
+			// ab00
 			__m128i cutnode=*(__m128i*)mtail;
+			// xyz0
 			__m128i badrootcol=*(__m128i*)(mtail+copyoffset);
+			// FF00
 			__m128i cutnodenz=_mm_cmplt_epi8(cutnode,zero);
+			// F000
 			__m128i cutnodekeepmask=_mm_bsrli_si128(cutnodenz,1);
+			// a000
 			__m128i cutnodekeep=_mm_and_si128(cutnode,cutnodekeepmask);
+			// 0yz0
 			__m128i badrootlcol=_mm_andnot_si128(cutnodekeepmask,badrootcol);
+			// 0FF0
 			__m128i badrootnz=_mm_cmplt_epi8(badrootlcol,zero);
+			// VYZV
 			__m128i badrootdescend=_mm_add_epi8(badrootlcol,_mm_set1_epi8(badroot));
+			// 0YZ0
 			__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
+			// aYZ0
 			__m128i newcol=_mm_add_epi8(cutnodekeep,badrootfinal);
 			*(__m128i*)mtail=newcol;
 			i=16;
