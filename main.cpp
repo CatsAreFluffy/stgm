@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstdint>
+#include <emmintrin.h>
 
 //string to parent offset matrix
 //returns number of columns
@@ -70,14 +71,24 @@ void printmatrix(int8_t* x) {
 	// std::cout << std::endl;
 }
 
+void printvcolumn(__m128i x) {
+	__attribute__((aligned(16))) int8_t decode[16];
+    _mm_store_si128((__m128i*)decode, x);
+	std::cout << '(';
+	for(int j=0;j<16;j++){
+		std::cout << ((int)decode[j]) << ',';
+	}
+	std::cout << ')' << std::endl;
+}
+
 int main(int argc, const char* argv[]) {
 	const int maxlen=16*10;
 	// invariant: all entries past the end of the matrix are 0
-	int8_t matrix[maxlen]={};
+	__attribute__((aligned(16))) int8_t matrix[maxlen]={};
 	int mcols=parsematrix(argv[1], matrix);
 	// active column
 	int8_t* mtail=matrix+mcols*16-16;
-	int8_t finish[maxlen]={};
+	__attribute__((aligned(16))) int8_t finish[maxlen]={};
 	int fcols=parsematrix(argv[2], finish);
 	int8_t* ftail=finish+fcols*16-16;
 	// incremental compare pointers
@@ -126,10 +137,22 @@ int main(int argc, const char* argv[]) {
 			// the copy to the cut node needs to be handled separately,
 			// since the pre-LNZ part isn't copied from the bad root and
 			// the other part is never ascended
-			// std::cout << (int)mtail[i+copyoffset-1] << std::endl;
-			for(i--;mtail[i]||mtail[i+copyoffset];i++){
-				mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
-			}
+			// equivalent scalar code:
+			// for(i--;i<16;i++){
+			// 	mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
+			// }
+			__m128i zero=_mm_setzero_si128();
+			__m128i cutnode=*(__m128i*)mtail;
+			__m128i badrootcol=*(__m128i*)(mtail+copyoffset);
+			__m128i cutnodenz=_mm_cmplt_epi8(cutnode,zero);
+			__m128i cutnodekeepmask=_mm_bsrli_si128(cutnodenz,1);
+			__m128i cutnodekeep=_mm_and_si128(cutnode,cutnodekeepmask);
+			__m128i badrootlcol=_mm_andnot_si128(cutnodekeepmask,badrootcol);
+			__m128i badrootnz=_mm_cmplt_epi8(badrootlcol,zero);
+			__m128i badrootdescend=_mm_add_epi8(badrootlcol,_mm_set1_epi8(badroot));
+			__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
+			__m128i newcol=_mm_add_epi8(cutnodekeep,badrootfinal);
+			*(__m128i*)mtail=newcol;
 			i=16;
 			int descendlim=0;
 			while(mtail-copyoffset<=matrix+maxlen){
