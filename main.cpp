@@ -139,14 +139,15 @@ int main(int argc, const char* argv[]) {
 			// for(i--;i<16;i++){
 			// 	mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
 			// }
+			__m128i* mtailv=(__m128i*)mtail;
 			// example: *mtail=ab00, *mtail+copyoffset=xyz0,
 			// badroot=V=X-x=Y-y..., -1=F
 			// 0000
 			__m128i zero=_mm_setzero_si128();
 			// ab00
-			__m128i cutnode=*(__m128i*)mtail;
+			__m128i cutnode=*mtailv;
 			// xyz0
-			__m128i badrootcol=*(__m128i*)(mtail+copyoffset);
+			__m128i badrootcol=mtailv[badroot];
 			// FF00
 			__m128i cutnodenz=_mm_cmplt_epi8(cutnode,zero);
 			// F000
@@ -162,10 +163,8 @@ int main(int argc, const char* argv[]) {
 			// 0YZ0
 			__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
 			// aYZ0
-			__m128i newcol=_mm_add_epi8(cutnodekeep,badrootfinal);
-			*(__m128i*)mtail=newcol;
+			*mtailv=_mm_add_epi8(cutnodekeep,badrootfinal);
 			// copy the rest of the columns
-			__m128i* mtailv=((__m128i*)mtail);
 			// last column to copy to
 			__m128i* mfinal=mtailv-1;
 			while(mfinal-badroot<(__m128i*)(matrix+maxlen)){
