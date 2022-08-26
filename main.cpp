@@ -4,17 +4,17 @@
 
 //string to parent offset matrix
 //returns number of columns
-int parsematrix(const char* x, int8_t* y) {
+int parsematrix(const char* x, int8_t* y, int8_t* z) {
 	// parse
 	int8_t* entry=y;
-    int8_t* column=y;
-    int columns=0;
+	int8_t* column=y;
+	int columns=0;
 	for(;*x;x++){
 		if(*x==','){
 			entry++;
 		}else if(*x==')'){
-            column+=16;
-            columns++;
+			column+=16;
+			columns++;
 			entry=column;
 		}else if(*x!='('){
 			*entry=(*entry)*10+(*x)-'0';
@@ -32,6 +32,7 @@ int parsematrix(const char* x, int8_t* y) {
 			k--;
 		}
 		y[i*16]=k;
+		if (z) z[i]=0;
 		// std::cout << i << "0 " << (int)k << std::endl << std::flush;
 	}
 	// others
@@ -46,6 +47,7 @@ int parsematrix(const char* x, int8_t* y) {
 				k+=y[(i+k)*16+j-1];
 			}
 			y[i*16+j]=k;
+			if (z) z[i]=j;
 			// std::cout << i << j << ' ' << (int)k << std::endl << std::flush;
 		}
 	}
@@ -73,7 +75,7 @@ void printmatrix(int8_t* x) {
 
 void printvcolumn(__m128i x) {
 	__attribute__((aligned(16))) int8_t decode[16];
-    _mm_store_si128((__m128i*)decode, x);
+	_mm_store_si128((__m128i*)decode, x);
 	std::cout << '(';
 	for(int j=0;j<16;j++){
 		std::cout << ((int)decode[j]) << ',';
@@ -82,14 +84,17 @@ void printvcolumn(__m128i x) {
 }
 
 int main(int argc, const char* argv[]) {
-	const int maxlen=16*10;
+	const int maxcol=10;
+	const int maxlen=16*maxcol;
 	// invariant: all entries past the end of the matrix are 0
 	__attribute__((aligned(16))) int8_t matrix[maxlen]={};
-	int mcols=parsematrix(argv[1], matrix);
+	int8_t lnzs[maxcol]={};
+	int mcols=parsematrix(argv[1], matrix, lnzs);
 	// active column
 	int8_t* mtail=matrix+mcols*16-16;
+	int mtailx=mcols-1;
 	__attribute__((aligned(16))) int8_t finish[maxlen]={};
-	int fcols=parsematrix(argv[2], finish);
+	int fcols=parsematrix(argv[2], finish, NULL);
 	int8_t* ftail=finish+fcols*16-16;
 	// incremental compare pointers
 	int8_t* mcmp=matrix;
@@ -117,14 +122,16 @@ int main(int argc, const char* argv[]) {
 			// if(steps>1){
 			// 	matrix[45678]+=3;
 			// }
-			int8_t badroot=0;
+			// int8_t badroot=0;
 			// fails for 16 row columns
-			for(int i=0;mtail[i];i++){
-				badroot=mtail[i];
-			}
+			// for(int i=0;mtail[i];i++){
+			// 	badroot=mtail[i];
+			// }
+			int8_t badroot=mtail[lnzs[mtailx]];
 			if(!badroot){
 				zeroes++;
 				mtail-=16;
+				mtailx--;
 				// if(argc>3){
 				// 	printmatrix(matrix);
 				// 	std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
@@ -135,14 +142,17 @@ int main(int argc, const char* argv[]) {
 			__m128i* mtailv=(__m128i*)mtail;
 			// last column to copy to
 			__m128i* mfinal=mtailv-1;
+			int mfinalx=mtailx-1;
 			while(mfinal-badroot<(__m128i*)(matrix+maxlen)){
 				mfinal-=badroot;
+				mfinalx-=badroot;
 			}
 			// if no copies are made, clear the cut node
 			if(mfinal==mtailv-1){
 				for(int j=0;j<16;j++){
 					mtail[j]=0;
 				}
+				// lnzs[mtailx]=0;
 			}else{
 				// the copy to the cut node needs to be handled separately,
 				// since the pre-LNZ part isn't copied from the bad root and
@@ -175,20 +185,27 @@ int main(int argc, const char* argv[]) {
 				__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
 				// aYZ0
 				*mtailv=_mm_add_epi8(cutnodekeep,badrootfinal);
+				lnzs[mtailx]=lnzs[mtailx]-1>lnzs[mtailx+badroot]?lnzs[mtailx]-1:lnzs[mtailx+badroot];
 				// copy each column of the bad part (but use cut node instead
 				// of bad root since the bad root was copied above)
 				__m128i* badrootp=mtailv+badroot;
+				int badrootpx=mtailx+badroot;
 				for(int copycoli=-badroot;copycoli>0;copycoli--){
 					__m128i copycol=badrootp[copycoli];
+					int copycolx=badrootpx+copycoli;
 					__m128i descendm=_mm_cmplt_epi8(copycol,_mm_set1_epi8(-copycoli));
 					__m128i descender=_mm_and_si128(descendm,_mm_set1_epi8(badroot));
-					for(__m128i* target=mtailv+copycoli;target<=mfinal;target-=badroot){
+					__m128i* target=mtailv+copycoli;
+					int targetx=mtailx+copycoli;
+					for(;target<=mfinal;target-=badroot,targetx-=badroot){
 						copycol=_mm_add_epi8(copycol,descender);
 						*target=copycol;
+						lnzs[targetx]=lnzs[copycolx];
 					}
 				}
 			}
 			mtail=(int8_t*)mfinal;
+			mtailx=mfinalx;
 			// if(argc>3){
 			// 	printmatrix(matrix);
 			// 	std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
