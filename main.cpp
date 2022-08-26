@@ -131,40 +131,8 @@ int main(int argc, const char* argv[]) {
 				// }
 				continue;
 			}
-			int copyoffset=badroot*16;
-			// the copy to the cut node needs to be handled separately,
-			// since the pre-LNZ part isn't copied from the bad root and
-			// the other part is never ascended
-			// equivalent scalar code: (uses i from the badroot loop)
-			// for(i--;i<16;i++){
-			// 	mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
-			// }
-			__m128i* mtailv=(__m128i*)mtail;
-			// example: *mtail=ab00, *mtail+copyoffset=xyz0,
-			// badroot=V=X-x=Y-y..., -1=F
-			// 0000
-			__m128i zero=_mm_setzero_si128();
-			// ab00
-			__m128i cutnode=*mtailv;
-			// xyz0
-			__m128i badrootcol=mtailv[badroot];
-			// FF00
-			__m128i cutnodenz=_mm_cmplt_epi8(cutnode,zero);
-			// F000
-			__m128i cutnodekeepmask=_mm_bsrli_si128(cutnodenz,1);
-			// a000
-			__m128i cutnodekeep=_mm_and_si128(cutnode,cutnodekeepmask);
-			// 0yz0
-			__m128i badrootlcol=_mm_andnot_si128(cutnodekeepmask,badrootcol);
-			// 0FF0
-			__m128i badrootnz=_mm_cmplt_epi8(badrootlcol,zero);
-			// VYZV
-			__m128i badrootdescend=_mm_add_epi8(badrootlcol,_mm_set1_epi8(badroot));
-			// 0YZ0
-			__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
-			// aYZ0
-			*mtailv=_mm_add_epi8(cutnodekeep,badrootfinal);
 			// copy the rest of the columns
+			__m128i* mtailv=(__m128i*)mtail;
 			// last column to copy to
 			__m128i* mfinal=mtailv-1;
 			while(mfinal-badroot<(__m128i*)(matrix+maxlen)){
@@ -176,9 +144,40 @@ int main(int argc, const char* argv[]) {
 					mtail[j]=0;
 				}
 			}else{
-				__m128i* badrootp=mtailv+badroot;
+				// the copy to the cut node needs to be handled separately,
+				// since the pre-LNZ part isn't copied from the bad root and
+				// the other part is never ascended
+				// equivalent scalar code: (uses i from the badroot loop)
+				// for(i--;i<16;i++){
+				// 	mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
+				// }
+				// example: *mtail=ab00, *mtail+copyoffset=xyz0,
+				// badroot=V=X-x=Y-y..., -1=F
+				// 0000
+				__m128i zero=_mm_setzero_si128();
+				// ab00
+				__m128i cutnode=*mtailv;
+				// xyz0
+				__m128i badrootcol=mtailv[badroot];
+				// FF00
+				__m128i cutnodenz=_mm_cmplt_epi8(cutnode,zero);
+				// F000
+				__m128i cutnodekeepmask=_mm_bsrli_si128(cutnodenz,1);
+				// a000
+				__m128i cutnodekeep=_mm_and_si128(cutnode,cutnodekeepmask);
+				// 0yz0
+				__m128i badrootlcol=_mm_andnot_si128(cutnodekeepmask,badrootcol);
+				// 0FF0
+				__m128i badrootnz=_mm_cmplt_epi8(badrootlcol,zero);
+				// VYZV
+				__m128i badrootdescend=_mm_add_epi8(badrootlcol,_mm_set1_epi8(badroot));
+				// 0YZ0
+				__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
+				// aYZ0
+				*mtailv=_mm_add_epi8(cutnodekeep,badrootfinal);
 				// copy each column of the bad part (but use cut node instead
-				// of bad root since the bad root was copied earlier)
+				// of bad root since the bad root was copied above)
+				__m128i* badrootp=mtailv+badroot;
 				for(int copycoli=-badroot;copycoli>0;copycoli--){
 					__m128i copycol=badrootp[copycoli];
 					__m128i descendm=_mm_cmplt_epi8(copycol,_mm_set1_epi8(-copycoli));
