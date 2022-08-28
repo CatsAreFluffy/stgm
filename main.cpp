@@ -27,9 +27,9 @@ int parsematrix(const char* x, int8_t* y, int8_t* z) {
 		if(!entry){
 			continue;
 		}
-		int8_t k=-1;
-		while(y[(i+k)*16]>=entry){
-			k--;
+		int8_t k=1;
+		while(y[(i-k)*16]>=entry){
+			k++;
 		}
 		y[i*16]=k;
 		if (z) z[i]=0;
@@ -43,8 +43,8 @@ int parsematrix(const char* x, int8_t* y, int8_t* z) {
 				continue;
 			}
 			int8_t k=y[i*16+j-1];
-			while(y[(i+k)*16+j]>=entry){
-				k+=y[(i+k)*16+j-1];
+			while(y[(i-k)*16+j]>=entry){
+				k+=y[(i-k)*16+j-1];
 			}
 			y[i*16+j]=k;
 			if (z) z[i]=j;
@@ -59,8 +59,8 @@ void printmatrix(int8_t* x) {
 	for(int i=0;i<10;i++){
 		std::cout << '(';
 		for(int j=0;j<16;j++){
-			std::cout << ((int)-x[i*16+j]) << ',';
-			if(x[i*16+j]<0){
+			std::cout << ((int)x[i*16+j]) << ',';
+			if(x[i*16+j]>0){
 				decode[i*16+j]=decode[(i+x[i*16+j])*16+j]+1;
 			}
 		}
@@ -122,12 +122,8 @@ int main(int argc, const char* argv[]) {
 			// if(steps>1){
 			// 	matrix[45678]+=3;
 			// }
-			// int8_t badroot=0;
-			// fails for 16 row columns
-			// for(int i=0;mtail[i];i++){
-			// 	badroot=mtail[i];
-			// }
 			int8_t badroot=mtail[lnzs[mtailx]];
+			// std::cout << (int)badroot << std::endl;
 			if(!badroot){
 				zeroes++;
 				mtail-=16;
@@ -143,10 +139,11 @@ int main(int argc, const char* argv[]) {
 			// last column to copy to
 			__m128i* mfinal=mtailv-1;
 			int mfinalx=mtailx-1;
-			while(mfinal-badroot<(__m128i*)(matrix+maxlen)){
-				mfinal-=badroot;
-				mfinalx-=badroot;
+			while(mfinal+badroot<(__m128i*)(matrix+maxlen)){
+				mfinal+=badroot;
+				mfinalx+=badroot;
 			}
+			// std::cout << ((int8_t*)mfinal)-matrix << std::endl;
 			// if no copies are made, clear the cut node
 			if(mfinal==mtailv-1){
 				for(int j=0;j<16;j++){
@@ -157,10 +154,6 @@ int main(int argc, const char* argv[]) {
 				// the copy to the cut node needs to be handled separately,
 				// since the pre-LNZ part isn't copied from the bad root and
 				// the other part is never ascended
-				// equivalent scalar code: (uses i from the badroot loop)
-				// for(i--;i<16;i++){
-				// 	mtail[i]=mtail[i+copyoffset]+(mtail[i+copyoffset]?badroot:0);
-				// }
 				// example: *mtail=ab00, *mtail+copyoffset=xyz0,
 				// badroot=V=X-x=Y-y..., -1=F
 				// 0000
@@ -168,9 +161,9 @@ int main(int argc, const char* argv[]) {
 				// ab00
 				__m128i cutnode=*mtailv;
 				// xyz0
-				__m128i badrootcol=mtailv[badroot];
+				__m128i badrootcol=mtailv[-badroot];
 				// FF00
-				__m128i cutnodenz=_mm_cmplt_epi8(cutnode,zero);
+				__m128i cutnodenz=_mm_cmpgt_epi8(cutnode,zero);
 				// F000
 				__m128i cutnodekeepmask=_mm_bsrli_si128(cutnodenz,1);
 				// a000
@@ -178,31 +171,34 @@ int main(int argc, const char* argv[]) {
 				// 0yz0
 				__m128i badrootlcol=_mm_andnot_si128(cutnodekeepmask,badrootcol);
 				// 0FF0
-				__m128i badrootnz=_mm_cmplt_epi8(badrootlcol,zero);
+				__m128i badrootnz=_mm_cmpgt_epi8(badrootlcol,zero);
 				// VYZV
 				__m128i badrootdescend=_mm_add_epi8(badrootlcol,_mm_set1_epi8(badroot));
 				// 0YZ0
 				__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
 				// aYZ0
 				*mtailv=_mm_add_epi8(cutnodekeep,badrootfinal);
-				lnzs[mtailx]=lnzs[mtailx]-1>lnzs[mtailx+badroot]?lnzs[mtailx]-1:lnzs[mtailx+badroot];
+				// std::cout << "hi" << std::endl;
+				lnzs[mtailx]=lnzs[mtailx]-1>lnzs[mtailx-badroot]?lnzs[mtailx]-1:lnzs[mtailx-badroot];
 				// copy each column of the bad part (but use cut node instead
 				// of bad root since the bad root was copied above)
-				__m128i* badrootp=mtailv+badroot;
-				int badrootpx=mtailx+badroot;
-				for(int copycoli=-badroot;copycoli>0;copycoli--){
+				__m128i* badrootp=mtailv-badroot;
+				int badrootpx=mtailx-badroot;
+				// std::cout << "hi" << std::endl;
+				for(int copycoli=badroot;copycoli>0;copycoli--){
 					__m128i copycol=badrootp[copycoli];
 					int copycolx=badrootpx+copycoli;
-					__m128i descendm=_mm_cmplt_epi8(copycol,_mm_set1_epi8(-copycoli));
+					__m128i descendm=_mm_cmpgt_epi8(copycol,_mm_set1_epi8(copycoli));
 					__m128i descender=_mm_and_si128(descendm,_mm_set1_epi8(badroot));
 					__m128i* target=mtailv+copycoli;
 					int targetx=mtailx+copycoli;
-					for(;target<=mfinal;target-=badroot,targetx-=badroot){
+					for(;target<=mfinal;target+=badroot,targetx+=badroot){
 						copycol=_mm_add_epi8(copycol,descender);
 						*target=copycol;
 						lnzs[targetx]=lnzs[copycolx];
 					}
 				}
+				// std::cout << "hi" << std::endl;
 			}
 			mtail=(int8_t*)mfinal;
 			mtailx=mfinalx;
