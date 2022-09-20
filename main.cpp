@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cstdint>
-#include <emmintrin.h>
+#include <immintrin.h>
 
 //string to parent offset matrix
 //returns number of columns
@@ -168,23 +168,20 @@ int main(int argc, const char* argv[]) {
 				__m128i cutnodekeepmask=_mm_bsrli_si128(cutnodenz,1);
 				// a000
 				__m128i cutnodekeep=_mm_and_si128(cutnode,cutnodekeepmask);
-				// 0yz0
-				__m128i badrootlcol=_mm_andnot_si128(cutnodekeepmask,badrootcol);
+				// FFF0
+				__m128i badrootnz=_mm_cmpgt_epi8(badrootcol,zero);
 				// 0FF0
-				__m128i badrootnz=_mm_cmpgt_epi8(badrootlcol,zero);
-				// VYZV
-				__m128i badrootdescend=_mm_add_epi8(badrootlcol,_mm_set1_epi8(badroot));
-				// 0YZ0
-				__m128i badrootfinal=_mm_and_si128(badrootdescend,badrootnz);
+				__m128i badrootlnz=_mm_andnot_si128(cutnodekeepmask,badrootnz);
+				// XYZV
+				__m128i badrootdescend=_mm_add_epi8(badrootcol,_mm_set1_epi8(badroot));
 				// aYZ0
-				*mtailv=_mm_add_epi8(cutnodekeep,badrootfinal);
-				// std::cout << "hi" << std::endl;
+				// using cutnode instead of cutnodekeep doesn't work when badrootlnz is all-zero
+				*mtailv=_mm_blendv_epi8(cutnodekeep,badrootdescend,badrootlnz);
 				lnzs[mtailx]=lnzs[mtailx]-1>lnzs[mtailx-badroot]?lnzs[mtailx]-1:lnzs[mtailx-badroot];
 				// copy each column of the bad part (but use cut node instead
 				// of bad root since the bad root was copied above)
 				__m128i* badrootp=mtailv-badroot;
 				int badrootpx=mtailx-badroot;
-				// std::cout << "hi" << std::endl;
 				for(int copycoli=badroot;copycoli>0;copycoli--){
 					__m128i copycol=badrootp[copycoli];
 					int copycolx=badrootpx+copycoli;
@@ -198,7 +195,6 @@ int main(int argc, const char* argv[]) {
 						lnzs[targetx]=lnzs[copycolx];
 					}
 				}
-				// std::cout << "hi" << std::endl;
 			}
 			mtail=(int8_t*)mfinal;
 			mtailx=mfinalx;
