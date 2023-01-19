@@ -22,9 +22,10 @@ int parsematrix(const char* x, int8_t* y, int8_t* z) {
 	}
 	// translate
 	// first row
-	for(int i=columns-1;i>=0;i--){
+	for(int i=10-1;i>=0;i--){
 		int8_t entry=y[i*16];
 		if(!entry){
+			y[i*16]=i+1;
 			continue;
 		}
 		int8_t k=1;
@@ -37,9 +38,10 @@ int parsematrix(const char* x, int8_t* y, int8_t* z) {
 	}
 	// others
 	for(int j=1;j<16;j++){
-		for(int i=columns-1;i>=0;i--){
+		for(int i=10-1;i>=0;i--){
 			int8_t entry=y[i*16+j];
 			if(!entry){
+				y[i*16+j]=i+1;
 				continue;
 			}
 			int8_t k=y[i*16+j-1];
@@ -60,8 +62,8 @@ void printmatrix(int8_t* x) {
 		std::cout << '(';
 		for(int j=0;j<16;j++){
 			std::cout << ((int)x[i*16+j]) << ',';
-			if(x[i*16+j]>0){
-				decode[i*16+j]=decode[(i+x[i*16+j])*16+j]+1;
+			if(x[i*16+j]>0&&x[i*16+j]<=i){
+				decode[i*16+j]=decode[(i-x[i*16+j])*16+j]+1;
 			}
 		}
 		std::cout << ") (";
@@ -84,6 +86,10 @@ void printvcolumn(__m128i x) {
 }
 
 int main(int argc, const char* argv[]) {
+	if(argc<2){
+		std::cout << "Usage: stgm <start> <end>" << std::endl;
+		return 0;
+	}
 	const int maxcol=10;
 	const int maxlen=16*maxcol;
 	// invariant: all entries past the end of the matrix are 0
@@ -99,10 +105,11 @@ int main(int argc, const char* argv[]) {
 	// incremental compare pointers
 	int8_t* mcmp=matrix;
 	int8_t* fcmp=finish;
-	// if(argc>3){
-	// 	printmatrix(matrix);
-	// 	std::cout << (mtail-matrix)/16 << std::endl;
-	// }
+	const int debug=0;
+	if(debug){
+		printmatrix(matrix);
+		std::cout << "matrix length " << (mtail-matrix)/16 << std::endl;
+	}
 	int_fast64_t steps=0;
 	int_fast64_t zeroes=0;
 	while(1){
@@ -119,19 +126,22 @@ int main(int argc, const char* argv[]) {
 		while(mupd>mcmp){
 			mupd=mtail;
 			steps++;
-			// if(steps>1){
-			// 	matrix[45678]+=3;
-			// }
+			if(debug&&steps>10){
+				matrix[45678]+=3;
+			}
 			int8_t badroot=mtail[lnzs[mtailx]];
-			// std::cout << (int)badroot << std::endl;
-			if(!badroot){
+			int8_t fakerootoffset=mtailx+1;
+			if(debug)std::cout << "lnz " << (int)lnzs[mtailx] << std::endl;
+			if(debug)std::cout << "bad root " << (int)badroot << std::endl;
+			if(badroot==fakerootoffset){
 				zeroes++;
 				mtail-=16;
 				mtailx--;
-				// if(argc>3){
-				// 	printmatrix(matrix);
-				// 	std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
-				// }
+				if(debug){
+					printmatrix(matrix);
+					std::cout << "no bad root ";
+					std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
+				}
 				continue;
 			}
 			// copy the rest of the columns
@@ -143,40 +153,34 @@ int main(int argc, const char* argv[]) {
 				mfinal+=badroot;
 				mfinalx+=badroot;
 			}
-			// std::cout << ((int8_t*)mfinal)-matrix << std::endl;
+			if(debug)std::cout << "mfinal " << ((int8_t*)mfinal)-matrix << std::endl;
 			// if no copies are made, clear the cut node
 			if(mfinal==mtailv-1){
 				for(int j=0;j<16;j++){
-					mtail[j]=0;
+					mtail[j]=fakerootoffset;
 				}
 				// lnzs[mtailx]=0;
 			}else{
-				// the copy to the cut node needs to be handled separately,
-				// since the pre-LNZ part isn't copied from the bad root and
-				// the other part is never ascended
-				// example: *mtail=ab00, *mtail+copyoffset=xyz0,
-				// badroot=V=X-x=Y-y..., -1=F
-				// 0000
-				__m128i zero=_mm_setzero_si128();
-				// ab00
+				// *mtail=abNN, *mtail+copyoffset=xyzn/nnnn
+				// badroot=V=N-n=X-x=Y-y..., -1=F
+				// abNN
 				__m128i cutnode=*mtailv;
-				// xyz0
+				if(debug)printvcolumn(cutnode);
+				// xyzn/nnnn
 				__m128i badrootcol=mtailv[-badroot];
+				if(debug)printvcolumn(badrootcol);
 				// FF00
-				__m128i cutnodenz=_mm_cmpgt_epi8(cutnode,zero);
+				__m128i cutnodenz=_mm_cmplt_epi8(cutnode,_mm_set1_epi8(fakerootoffset));
+				if(debug)printvcolumn(cutnodenz);
 				// F000
 				__m128i cutnodekeepmask=_mm_bsrli_si128(cutnodenz,1);
-				// a000
-				__m128i cutnodekeep=_mm_and_si128(cutnode,cutnodekeepmask);
-				// FFF0
-				__m128i badrootnz=_mm_cmpgt_epi8(badrootcol,zero);
-				// 0FF0
-				__m128i badrootlnz=_mm_andnot_si128(cutnodekeepmask,badrootnz);
-				// XYZV
+				if(debug)printvcolumn(cutnodekeepmask);
+				// XYZN/NNNN
 				__m128i badrootdescend=_mm_add_epi8(badrootcol,_mm_set1_epi8(badroot));
-				// aYZ0
-				// using cutnode instead of cutnodekeep doesn't work when badrootlnz is all-zero
-				*mtailv=_mm_blendv_epi8(cutnodekeep,badrootdescend,badrootlnz);
+				if(debug)printvcolumn(badrootdescend);
+				// aYZN/aNNN
+				*mtailv=_mm_blendv_epi8(badrootdescend,cutnode,cutnodekeepmask);
+				if(debug)printvcolumn(*mtailv);
 				lnzs[mtailx]=lnzs[mtailx]-1>lnzs[mtailx-badroot]?lnzs[mtailx]-1:lnzs[mtailx-badroot];
 				// copy each column of the bad part (but use cut node instead
 				// of bad root since the bad root was copied above)
@@ -198,10 +202,11 @@ int main(int argc, const char* argv[]) {
 			}
 			mtail=(int8_t*)mfinal;
 			mtailx=mfinalx;
-			// if(argc>3){
-			// 	printmatrix(matrix);
-			// 	std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
-			// }
+			if(debug){
+				printmatrix(matrix);
+				std::cout << "matrix length ";
+				std::cout << (mtail-matrix)/16 << ' ' << mcmp-matrix << std::endl;
+			}
 		}
 	}
 	bigbreak:
